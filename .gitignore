@@ -1,0 +1,13 @@
+# 本地联调用的 workspace，不要提交：发布版本应当依赖 sloth 的正式 tag
+go.work
+go.work.sum
+
+# 示例运行时产生的媒体目录
+examples/media/client/.media/
+examples/media/client/client.exe
+examples/media/server/server.exe
+*.log
+*.err
+*.bin
+*.exe
+/vendor
