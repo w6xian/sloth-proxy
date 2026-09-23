@@ -1,0 +1,10 @@
+# 构建产物
+bin/
+
+# 运行产物
+*.log
+audit.jsonl
+
+# 本地账号与授权配置（含口令，不要提交）
+users.json
+grants.json

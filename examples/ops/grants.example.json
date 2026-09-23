@@ -1,0 +1,5 @@
+[
+  { "user": "demo",  "machine": "*",    "level": "view" },
+  { "user": "alice", "machine": "web*", "level": "ops" },
+  { "user": "alice", "machine": "db01", "level": "admin" }
+]

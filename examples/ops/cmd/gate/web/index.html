@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>sloth-proxy · 运维终端</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f6f7f9; color: #222; }
+  header { display: flex; gap: 10px; align-items: center; padding: 10px 16px; background: #1f2937; color: #e5e7eb; flex-wrap: wrap; }
+  header select, header input { padding: 5px 8px; border: 1px solid #4b5563; border-radius: 4px; background: #111827; color: #e5e7eb; }
+  header button { padding: 5px 12px; border: 0; border-radius: 4px; background: #2563eb; color: #fff; cursor: pointer; }
+  header button:hover { background: #1d4ed8; }
+  header button.ghost { background: #374151; }
+  header .spacer { flex: 1; }
+  .me { color: #93c5fd; }
+  .level { display: inline-block; padding: 0 6px; border-radius: 3px; font-size: 11px; background: #0ea5e9; color: #fff; }
+  .level.ops { background: #f59e0b; }
+  .level.admin { background: #dc2626; }
+  main { display: flex; gap: 12px; padding: 12px; height: calc(100vh - 56px); }
+  .left, .right { display: flex; flex-direction: column; min-width: 0; }
+  .left { flex: 2; }
+  .right { flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; overflow: auto; }
+  #term { flex: 1; overflow: auto; background: #0b1020; color: #d7e0f5; padding: 12px; border-radius: 6px;
+          font-family: Consolas, "Courier New", monospace; font-size: 13px; white-space: pre-wrap; }
+  #term .cmd { color: #7dd3fc; }
+  #term .ok { color: #86efac; }
+  #term .deny { color: #fca5a5; }
+  #term .err { color: #fca5a5; }
+  #term .meta { color: #6b7280; }
+  .inputline { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+  .inputline input { flex: 1; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px;
+                     font-family: Consolas, monospace; font-size: 14px; }
+  .prompt { font-family: Consolas, "Courier New", monospace; font-size: 13px; color: #0ea5e9;
+            white-space: nowrap; max-width: 42%; overflow: hidden; text-overflow: ellipsis; }
+  h2 { margin: 0; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid #e5e7eb; background: #f9fafb; }
+  #audit { padding: 8px 12px; font-size: 12px; }
+  .row { padding: 6px 0; border-bottom: 1px dashed #eef2f7; }
+  .tag { display: inline-block; padding: 0 6px; border-radius: 3px; font-size: 11px; color: #fff; }
+  .tag.allow { background: #16a34a; }
+  .tag.deny { background: #dc2626; }
+  .muted { color: #6b7280; }
+</style>
+</head>
+<body>
+<header>
+  <strong>sloth-proxy</strong>
+
+  <span id="loginBox">
+    <input id="user" placeholder="账号" size="10">
+    <input id="pass" type="password" placeholder="口令" size="10">
+    <button id="login">登录</button>
+  </span>
+
+  <span id="userBox" style="display:none">
+    <span class="me" id="meName"></span>
+    <span class="level" id="meLevel"></span>
+    <button class="ghost" id="logout">退出</button>
+  </span>
+
+  <span id="opBox" style="display:none">
+    <select id="machine"></select>
+    <button class="ghost" id="rules">支持什么命令</button>
+  </span>
+
+  <span class="spacer"></span>
+  <span class="muted">受限终端：不经 shell，不支持 ; | &amp; 与全屏程序</span>
+</header>
+
+<main>
+  <section class="left">
+    <div id="term"></div>
+    <div class="inputline">
+      <span class="prompt" id="prompt">$</span>
+      <input id="cmd" placeholder="登录后输入命令（上下键翻历史）" disabled>
+    </div>
+  </section>
+  <aside class="right">
+    <h2>审计（最近 50 条）</h2>
+    <div id="audit"></div>
+  </aside>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const term = $('term');
+let history = [], hIdx = -1, me = null;
+
+function line(cls, text) {
+  const div = document.createElement('div');
+  div.className = cls;
+  div.textContent = text;
+  term.appendChild(div);
+  term.scrollTop = term.scrollHeight;
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+const jfetch = (url, opt) => fetch(url, Object.assign({ credentials: 'same-origin' }, opt || {}));
+
+async function loadMe() {
+  me = await jfetch('/api/me').then(x => x.json()).catch(() => ({ ok: false }));
+  const ok = !!(me && me.ok);
+  $('loginBox').style.display = ok ? 'none' : '';
+  $('userBox').style.display = ok ? '' : 'none';
+  $('opBox').style.display = ok ? '' : 'none';
+  $('cmd').disabled = !ok;
+  if (ok) {
+    $('meName').textContent = me.user.label || me.user.name;
+    const lv = $('meLevel');
+    lv.textContent = (me.grants && me.grants.length)
+      ? '最高档位 ' + me.grants.map(g => g.level).sort().reverse()[0] : '无授权';
+    lv.className = 'level ' + ((me.grants || []).some(g => g.level === 'admin') ? 'admin'
+      : (me.grants || []).some(g => g.level === 'ops') ? 'ops' : '');
+    $('cmd').focus();
+    loadMachines(); loadAudit();
+  } else {
+    $('machine').innerHTML = '';
+    $('audit').innerHTML = '';
+  }
+}
+
+async function loadMachines() {
+  const r = await jfetch('/api/machines').then(x => x.json()).catch(() => []);
+  const sel = $('machine');
+  const cur = sel.value;
+  sel.innerHTML = '';
+  (r || []).forEach(m => {
+    const o = document.createElement('option');
+    o.value = m.name; o.textContent = m.name + ' [' + m.level + ']';
+    sel.appendChild(o);
+  });
+  if (cur) sel.value = cur;
+  // 第一次拿到机器列表：静默跑一次 pwd，把提示符上的当前目录填上
+  if (!cur && sel.value && me && me.ok) { setPrompt(''); run('pwd', true); }
+}
+
+async function loadAudit() {
+  const r = await jfetch('/api/audit?n=50').then(x => x.json()).catch(() => []);
+  const box = $('audit');
+  box.innerHTML = '';
+  (r || []).forEach(e => {
+    const div = document.createElement('div');
+    div.className = 'row';
+    const t = new Date(e.time).toLocaleTimeString();
+    const tag = '<span class="tag ' + (e.decision === 'allow' ? 'allow' : 'deny') + '">' + e.decision + '</span>';
+    div.innerHTML = tag + ' <b>' + esc(e.user) + '</b>' + (e.level ? '<span class="muted">(' + esc(e.level) + ')</span>' : '') +
+      ' @' + esc(e.machine) + ' <code>' + esc(e.line) + '</code>' +
+      '<div class="muted">' + t + ' · 规则 ' + esc(e.rule_id || '-') +
+      ' · exit ' + e.exit_code + ' · ' + e.cost_ms + 'ms' +
+      (e.reason ? ' · ' + esc(e.reason) : '') + '</div>';
+    box.appendChild(div);
+  });
+}
+
+// setPrompt 提示符显示"机器:当前目录"。cwd 由会话维护（cd 改它，pwd 读它）。
+function setPrompt(cwd) {
+  const m = $('machine').value || '-';
+  $('prompt').textContent = m + (cwd ? ':' + cwd : '') + ' $';
+}
+
+async function run(text, quiet) {
+  if (!text.trim() || !me || !me.ok) return;
+  const t = text.trim();
+  if (!quiet) {
+    if (t === 'help' || t === '?' || t === '支持什么命令') { showRules(); return; }
+    if (t === 'clear' || t === 'cls') { term.innerHTML = ''; return; }
+    line('cmd', '$ ' + text);
+  }
+  const body = { machine: $('machine').value, line: text };
+  const res = await jfetch('/api/exec', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(x => x.json()).catch(e => ({ error: String(e) }));
+
+  if (res.error && /未登录/.test(res.error)) {
+    line('err', '会话已过期，请重新登录');
+    loadMe();
+    return;
+  }
+  if (res.cwd) setPrompt(res.cwd); // cd/pwd 与执行后都会回带会话目录
+
+  if (quiet) { loadAudit(); return; }
+
+  if (res.denied) {
+    line('deny', '⛔ 已拦截：' + (res.reason || '不在白名单') + '（档位 ' + (res.level || '-') +
+      ' · 规则 ' + (res.rule_id || '-') + '，已记审计）');
+  } else if (res.error) {
+    line('err', '⚠ ' + res.error);
+  } else {
+    if (res.output) line('ok', res.output);
+    if (res.truncated) line('meta', '… 输出被截断，共 ' + res.bytes + ' 字节，完整输出 id=' + res.output_id);
+    line('meta', '[exit ' + res.exit_code + ' · ' + res.cost_ms + 'ms · ' + res.bytes + 'B · 档位 ' + (res.level || '-') + ']');
+  }
+  loadAudit();
+}
+
+async function doLogin() {
+  const r = await jfetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user: $('user').value, pass: $('pass').value })
+  }).then(x => x.json()).catch(e => ({ error: String(e) }));
+  $('pass').value = '';
+  if (r && r.ok) {
+    line('meta', '登录成功：' + (r.user.label || r.user.name));
+    loadMe();
+  } else {
+    line('err', '登录失败：' + ((r && r.error) || '账号或口令错误'));
+  }
+}
+
+// showRules 列出当前机器 + 当前档位下允许/拒绝的命令。
+async function showRules() {
+  if (!me || !me.ok) return;
+  const m = $('machine').value;
+  const r = await jfetch('/api/rules?machine=' + encodeURIComponent(m))
+    .then(x => x.json()).catch(() => null);
+  if (!r) { line('err', '取规则失败'); return; }
+  if (!r.granted) { line('deny', '该机器未授权：' + (r.machine || '-')); return; }
+  line('meta', '档位 ' + r.level + ' @' + (r.machine || '-') +
+    (r.platform ? '  [' + r.platform + ']' : '') + ' —— 默认拒绝，下面是白名单');
+  (r.allow || []).forEach(x =>
+    line('ok', '  allow  ' + x.cmd + (x.args ? '  ' + x.args : '') + (x.reason ? '   // ' + x.reason : '')));
+  (r.deny || []).forEach(x =>
+    line('deny', '  deny   ' + x.cmd + (x.args ? '  ' + x.args : '') + (x.reason ? '   // ' + x.reason : '')));
+  if ((r.mappings || []).length) {
+    line('meta', '—— 敲 Linux 命令，实际跑 Windows 命令 ——');
+    (r.mappings || []).forEach(m => {
+      if (m.windows) line('ok', '  ' + pad(m.linux) + ' → ' + m.windows);
+      else line('deny', '  ' + pad(m.linux) + ' × ' + (m.note || 'Windows 上无对应实现'));
+    });
+  }
+  line('meta', r.note);
+}
+
+// pad 对齐用：命令名长短不一，右列要对齐才看得下去。
+function pad(s) { s = String(s || ''); return s + ' '.repeat(Math.max(0, 14 - s.length)); }
+
+$('rules').onclick = showRules;
+$('machine').addEventListener('change', () => { setPrompt(''); if (me && me.ok) run('pwd', true); });
+$('login').onclick = doLogin;
+$('pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('logout').onclick = async () => {
+  await jfetch('/api/logout', { method: 'POST' });
+  me = null; loadMe(); line('meta', '已退出');
+};
+
+$('cmd').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const v = e.target.value;
+    if (v.trim()) { history.push(v); hIdx = history.length; }
+    e.target.value = '';
+    run(v);
+  } else if (e.key === 'ArrowUp') {
+    if (hIdx > 0) { hIdx--; e.target.value = history[hIdx]; }
+    e.preventDefault();
+  } else if (e.key === 'ArrowDown') {
+    if (hIdx < history.length - 1) { hIdx++; e.target.value = history[hIdx]; }
+    else { hIdx = history.length; e.target.value = ''; }
+    e.preventDefault();
+  }
+});
+
+setInterval(() => { if (me && me.ok) { loadMachines(); loadAudit(); } }, 5000);
+loadMe();
+line('meta', '就绪。先登录（默认 demo / demo），再选机器敲命令。');
+line('meta', '试：pwd → ls → cd internal → ls → help（看这台机器这个档位能敲什么）');
+</script>
+</body>
+</html>

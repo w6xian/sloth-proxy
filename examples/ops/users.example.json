@@ -1,0 +1,4 @@
+[
+  { "name": "demo",  "label": "演示账号", "pass_plain": "demo" },
+  { "name": "alice", "label": "张三",     "pass_plain": "change-me" }
+]

@@ -5,6 +5,7 @@ go 1.27.0
 require (
 	github.com/w6xian/sloth/v4 v4.2.0
 	github.com/w6xian/tlv v0.0.5
+	golang.org/x/crypto v0.41.0
 )
 
 require (
@@ -14,7 +15,6 @@ require (
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/quic-go/quic-go v0.55.0 // indirect
-	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/mod v0.27.0 // indirect
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect

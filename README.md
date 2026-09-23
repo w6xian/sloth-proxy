@@ -85,6 +85,7 @@ mux.HandleFunc("/_upload", func(w http.ResponseWriter, r *http.Request) {
 | `proxy/http` | 可用 | 网关（`NewGateway`）+ 转发服务（`Forward`），请求-响应型 |
 | `proxy/ssh` | 预留 | 双向长流，需要会话语义，等 sloth 支持流式响应后落地 |
 | `examples/media` | 可用 | 端到端示例：把内网目录暴露成 `/m/media/...` |
+| `examples/ops` | 可用 | 端到端示例：Web 受限终端——浏览器敲命令，agent 在被管机执行，命令级白名单 + 强制审计 |
 
 SOCKS5 与 SSH 同属"会话型"，共享同一套 `Session` 契约草案（写在 `ssh/doc.go` 里），
 流式能力一到位可以一起落地。
