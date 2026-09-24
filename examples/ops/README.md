@@ -10,8 +10,9 @@
 本示例是 `sloth-proxy` 仓库的一个示例（`examples/ops`），没有自己的 `go.mod`：
 
 - 命令统一从**仓库根**跑：`go run ./examples/ops/cmd/gate`；
-- sloth 由仓库根的 `go.work`（`use . ..`）指向本地 `../v4` 源码，改 sloth 立刻生效；
-  `go.work` 不提交，发布版依赖 sloth 的正式 tag（见仓库根 README「本地联调」）；
+- sloth 走正常的 `require github.com/w6xian/sloth/v4 v4.2.0`（仓库根 `go.mod`）：
+  **不用 `replace`、不用 `go.work`**——示例是给人抄的，依赖写成正式版本号才能直接复用；
+  要联调本地 sloth 改动，临时 `go mod edit -replace` 或自建 go.work，事后清掉、别提交；
 - 外部依赖只有一个 `golang.org/x/crypto/bcrypt`（口令哈希），已在仓库根 `go.mod` 里。
 
 ## 登录、授权与档位

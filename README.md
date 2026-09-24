@@ -128,10 +128,14 @@ TCP 客户端的自动重连是 sloth `nrpc/tcp` 的能力。若你的 sloth 版
 
 ## 本地联调
 
-本仓库依赖 `github.com/w6xian/sloth/v4`。要对着本地未发布的 sloth 改动开发：
+依赖是 `go.mod` 里那行正式的 `require github.com/w6xian/sloth/v4 v4.2.0`——
+**默认没有 `replace`、没有 `go.work`**，clone 下来就能编。
+
+只有要对着自己本地**未发布**的 sloth 改动开发时，才临时建 workspace：
 
 ```bash
-go work init . ../      # 在 sloth/v4/sloth-proxy 下：.. 就是 sloth/v4
+go work init . ../sloth/v4   # 两个仓库平级放在 github.com/ 下
 ```
 
-`go.work` 不要提交（已加进 `.gitignore`）：发布版本应当依赖 sloth 的正式 tag。
+`go.work` 不要提交（已加进 `.gitignore`）。用完删掉：有 go.work 时 `go build`
+走的是本地源码，跟 `require` 的版本不是一回事——留着会让"能编过"变成假象。
